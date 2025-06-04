@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Translation>
+  <!-- 
+    Increment the TranslationVersion every time the translation file is updated
+	Also update the version.info file
+  -->
+  <TranslationVersion>0</TranslationVersion>
+  <item>
+    <key>ReferencedBy</key>
+    <value>Referenced by</value>
+  </item>
+  <item>
+    <key>Referencing</key>
+    <value>References</value>
+  </item>
+  <item>
+    <key>AskRestoreDeleted</key>
+    <value>{0} detected deleted entries that are referenced in other entries.
+Those references can only be resolved if the deleted entries are restored.
+
+Database: {1}
+Restorable entries: {2}
+
+Restore entries?</value>
+  </item>
+  <item>
+    <key>RestoreGroupName</key>
+    <value>{0} - restored entries</value>
+  </item>
+  <item>
+    <key>PluginActive</key>
+    <value>{0} is active</value>
+  </item>
+  <item>
+    <key>PluginInactive</key>
+    <value>{0} is inactive</value>
+  </item>
+</Translation>

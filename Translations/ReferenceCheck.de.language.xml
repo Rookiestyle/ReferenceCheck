@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Translation>
+  <!-- 
+    Increment the TranslationVersion every time the translation file is updated
+	Also update the version.info file
+  -->
+  <TranslationVersion>1</TranslationVersion>
+  <item>
+    <key>ReferencedBy</key>
+    <value>Referenzen auf diesen Eintrag</value>
+  </item>
+  <item>
+    <key>Referencing</key>
+    <value>Referenzierte Einträge</value>
+  </item>
+  <item>
+    <key>AskRestoreDeleted</key>
+    <value>{0} hat gelöschte Einträge erkannt, die in anderen Einträgen referenziert werden. 
+Diese Referenzen können nur aufgelöst werden, wenn die gelöschten Einträge wiederhergestellt werden.
+
+Datenbank: {1}
+Wiederherstellbare Einträge: {2}
+
+Sollen diese Einträge wiederhergestellt werden?</value>
+  </item>
+  <item>
+    <key>RestoreGroupName</key>
+    <value>{0} - wiederhergestellte Einträge</value>
+  </item>
+  <item>
+    <key>PluginActive</key>
+    <value>{0} ist aktiv</value>
+  </item>
+  <item>
+    <key>PluginInactive</key>
+    <value>{0} ist inaktiv</value>
+  </item>
+</Translation>
