@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Translation>
+  <!-- 
+    Increment the TranslationVersion every time the translation file is updated
+	Also update the version.info file
+  -->
+  <TranslationVersion>0</TranslationVersion>
+  <item>
+    <key>ReferencedBy</key>
+    <value>Referenciado por</value>
+  </item>
+  <item>
+    <key>Referencing</key>
+    <value>Referências</value>
+  </item>
+  <item>
+    <key>AskRestoreDeleted</key>
+    <value>{0} entradas excluídas detectadas que são referenciadas em outras entradas.
+Essas referências só podem ser resolvidas se as entradas excluídas forem restauradas.
+
+Banco de dados: {1}
+Entradas restauráveis: {2}
+
+Restaurar entradas?</value>
+  </item>
+  <item>
+    <key>RestoreGroupName</key>
+    <value>{0} - entradas restauradas</value>
+  </item>
+  <item>
+    <key>PluginActive</key>
+    <value>{0} está ativo</value>
+  </item>
+  <item>
+    <key>PluginInactive</key>
+    <value>{0} está inativo</value>
+  </item>
+</Translation>
