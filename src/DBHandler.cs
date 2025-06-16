@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Windows.Forms;
 using KeePass;
@@ -86,6 +85,11 @@ namespace ReferenceCheck
       return m_dDB[db].GetReferencingEntries(pe.Uuid);
     }
 
+    public static string GetDB(PwDatabase db)
+    {
+      return db.IsOpen ? db.IOConnectionInfo.Path : string.Empty;
+    }
+
     private static string GetDB(PwEntry pe)
     {
       // SafeFindContainerOf / FindContainerOf return the active databass if no db is found / is too slow
@@ -155,6 +159,13 @@ namespace ReferenceCheck
       if (!m_dDB.ContainsKey(db)) return EmptyEntryList;
       return m_dDB[db].GetReferencedEntries(pe.Uuid);
     }
+
+    internal static DB_References Get_References(PwDatabase db)
+    {
+      var sDB = DB_Handler.GetDB(db);
+      if (m_dDB.ContainsKey(sDB)) return m_dDB[sDB];
+      return null;
+    }
   }
 
   internal class DB_References
@@ -166,6 +177,8 @@ namespace ReferenceCheck
     private string m_sDBPath = string.Empty;
 
     private int m_iDelObjCount = 0;
+
+    public List<EntryReferences>  AllReferences { get { return m_lReferences; } }
 
     public static readonly EntryReferences NoReferences = new EntryReferences(null);
     internal DB_References(PwDatabase db)

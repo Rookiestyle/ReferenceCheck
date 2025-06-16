@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Resources;
 using System.Windows.Forms;
 using KeePass;
 using KeePass.Forms;
@@ -20,6 +18,7 @@ namespace ReferenceCheck
   {
     private IPluginHost m_host = null;
     private ToolStripMenuItem m_tsmiConfig = null;
+    private ToolStripMenuItem m_tsmiFind = null;
 
     public override bool Initialize(IPluginHost host)
     {
@@ -49,6 +48,97 @@ namespace ReferenceCheck
       m_tsmiConfig.Click += OnToggleActive;
       m_host.MainWindow.ToolsMenu.DropDownItems.Add(m_tsmiConfig);
       ImageOff = UIUtil.CreateGrayImage(SmallIcon);
+
+      AddFindMenu();
+    }
+
+
+    private void AddFindMenu()
+    {
+      m_tsmiFind = new ToolStripMenuItem();
+      m_tsmiFind.Text = PluginTranslate.PluginName + "...";
+      m_tsmiFind.Image = SmallIcon;
+      m_tsmiFind.Click += OnFindReferences;
+      var tsmiAnchor = Tools.FindToolStripMenuItem(m_host.MainWindow.MainMenu.Items, "m_menuFindDupPasswords", true);
+      if (tsmiAnchor != null)
+      {
+        var tsmiParent = tsmiAnchor.GetCurrentParent();
+        tsmiParent.Items.Insert(tsmiParent.Items.IndexOf(tsmiAnchor), m_tsmiFind);
+        if (tsmiParent is ToolStripDropDownMenu)
+        {
+          (tsmiParent as ToolStripDropDownMenu).Opening += ReferenceCheckExt_Opening;
+        }
+        return;
+      }
+      tsmiAnchor = Tools.FindToolStripMenuItem(m_host.MainWindow.MainMenu.Items, "m_menuFind", true);
+      if (tsmiAnchor != null)
+      {
+        tsmiAnchor.DropDownItems.Add(m_tsmiFind);
+        tsmiAnchor.DropDownOpening += ReferenceCheckExt_Opening;
+      }
+    }
+
+    private void ReferenceCheckExt_Opening(object sender, EventArgs e)
+    {
+      m_tsmiFind.Enabled = m_host.Database.IsOpen && Config.Active;
+    }
+
+    private void OnFindReferences(object sender, EventArgs e)
+    {
+      if (m_host.Database == null) return;
+      if (!m_host.Database.IsOpen) return;
+      var dbR = DB_Handler.Get_References(m_host.Database);
+      if (dbR ==  null) return;
+      if (dbR.AllReferences.Count == 0) return;
+
+      var tc = new TabControl();
+
+      Dictionary<PwEntry, List<PwEntry>> dReferencing = new Dictionary<PwEntry, List<PwEntry>>();
+      Dictionary<PwEntry, List<PwEntry>> dReferences = new Dictionary<PwEntry, List<PwEntry>>();
+
+      foreach (var f in dbR.AllReferences)
+      {
+        var l = DB_Handler.GetReferencingEntries(f.Entry);
+        if (l.References.Count == 0)
+          continue;
+        if (!dReferencing.ContainsKey(l.Entry)) dReferencing[l.Entry] = new List<PwEntry>();
+        dReferencing[l.Entry].AddRange(l.References);
+        foreach (var lR in l.References)
+        {
+          if (!dReferences.ContainsKey(lR)) dReferences[lR] = new List<PwEntry>();
+          if (!dReferences[lR].Contains(f.Entry)) dReferences[lR].Add(f.Entry);
+        }
+      }
+      ListView lv1 = null;
+      ListView lv2 = null;
+      foreach (var x in dReferencing)
+        lv1 = AddReferencesTab(tc, PluginTranslate.Referencing, x.Value, x.Key);
+
+      foreach (var x in dReferences)
+        lv2 = AddReferencesTab(tc, PluginTranslate.ReferencedBy, x.Value, x.Key);
+
+      var fo = new Form();
+      fo.FormBorderStyle = FormBorderStyle.FixedDialog;
+      fo.MaximizeBox = fo.MinimizeBox = false;
+      fo.Width = m_host.MainWindow.Width / 2;
+      fo.Height = m_host.MainWindow.Height/ 2;
+      lv1.Scrollable = true;
+      tc.Dock = DockStyle.Fill;
+      fo.Controls.Add(tc);
+      var bCancel = new Button();
+      bCancel.Click += (o, e1) => { fo.Close(); };
+      fo.Controls.Add(bCancel);
+      fo.CancelButton = bCancel;
+      fo.Text = PluginTranslate.PluginName;
+      fo.Shown += (o, e1) =>
+      {
+        if (lv1 != null) lv1.AutoResizeColumns(ColumnHeaderAutoResizeStyle.ColumnContent);
+        if (lv2 != null) lv2.AutoResizeColumns(ColumnHeaderAutoResizeStyle.ColumnContent);
+      };
+      fo.Icon = Resources.image_on;
+      fo.StartPosition = FormStartPosition.CenterParent;
+      UIUtil.ShowDialogAndDestroy(fo);
+      return;
     }
 
     private void OnToggleActive(object sender, EventArgs e)
@@ -129,30 +219,52 @@ namespace ReferenceCheck
       tc = new TabControl();
       tc.Dock = DockStyle.Fill;
       tp.Controls.Add(tc);
+      ListView lv = null;
       if (Config.ShowReferencedEntries)
       {
-        AddReferencesTab(tc,
+        lv = AddReferencesTab(tc,
                          PluginTranslate.Referencing,
                          DB_Handler.GetReferencedEntries(f.EntryRef));
       }
       if (Config.ShowReferencingEntries)
       {
-        AddReferencesTab(tc,
+        lv = AddReferencesTab(tc,
                          PluginTranslate.ReferencedBy,
                          DB_Handler.GetReferencingEntries(f.EntryRef).References);
       }
       //AddReferencingTab(tc, f.EntryRef);
       //AddReferencesTab(tc, f.EntryRef);
+      if (lv != null) 
+        lv.AutoResizeColumn(0, ColumnHeaderAutoResizeStyle.ColumnContent);
 
       tp.ResumeLayout();
     }
 
-    private void AddReferencesTab(TabControl tc, string sTitle, List<PwEntry> lEntries)
+    private ListView AddReferencesTab(TabControl tc, string sTitle, List<PwEntry> lEntries, PwEntry pe = null)
     {
-      if (lEntries.Count == 0) return;
-      TabPage tp = new TabPage(sTitle);
-      ListView lv = new ListView();
+      if (lEntries.Count == 0) return null;
+      TabPage tp = null;
+      ListView lv = null;
+      for (int i = 0; i < tc.TabPages.Count; i++)
+      {
+        if (tc.TabPages[i].Text == sTitle)
+        {
+          tp = tc.TabPages[i];
+          lv = Tools.GetControl("Rookiestyle_References_lv" + sTitle, tp) as ListView;
+          break;
+        }
+      }
+      if (tp == null)
+      {
+        tp = new TabPage(sTitle);
+        lv = new ListView();
+        lv.Name = "Rookiestyle_References_lv" + sTitle;
+        tp.Controls.Add(lv);
+        tc.TabPages.Add(tp);
+      }
       List<ListViewGroup> lGroups = new List<ListViewGroup>();
+      foreach (var g in lv.Groups)
+        lGroups.Add(g as ListViewGroup);
       foreach (PwEntry er in lEntries)
       {
         ListViewGroup g = lGroups.Find(x => x.Tag == er.ParentGroup);
@@ -165,17 +277,64 @@ namespace ReferenceCheck
         ListViewItem lvi = new ListViewItem();
         lvi.Group = g;
         lvi.Text = er.Strings.ReadSafe(PwDefs.TitleField);
-        lv.Items.Add(lvi);
+        lvi.Tag = er;
+        var lviAdded = lv.Items.Add(lvi);
+        if (pe != null)
+        {
+          var lvsi = new ListViewItem.ListViewSubItem();
+          lvsi.Text = pe.Strings.ReadSafe(PwDefs.TitleField);
+          lvsi.Tag = pe;
+          lviAdded.SubItems.Add(lvsi);
+        }
       }
       lv.View = View.Details;
       lv.ShowGroups = true;
       lv.FullRowSelect = true;
-      lv.Columns.Add(KPRes.Title);
+      if (lv.Columns.Count == 0)
+        lv.Columns.Add(KPRes.Entry);
+      if (pe != null && lv.Columns.Count == 1)
+      {
+        if (sTitle == PluginTranslate.Referencing)
+          lv.Columns.Add(PluginTranslate.ReferencedBy);
+        else
+          lv.Columns.Add(PluginTranslate.Referencing);
+        lv.MouseDoubleClick += Lv_MouseDoubleClick;
+      }
       lv.Dock = DockStyle.Fill;
-      tp.Controls.Add(lv);
-      lv.AutoResizeColumn(0, ColumnHeaderAutoResizeStyle.ColumnContent);
-      tc.TabPages.Add(tp);
+      return lv;
     }
+
+    private void Lv_MouseDoubleClick(object sender, MouseEventArgs e)
+    {
+      if (!(sender is ListView)) return;
+      ListViewHitTestInfo lvHit = (sender as ListView).HitTest(e.Location);
+      if (lvHit == null || (lvHit.Item as ListViewItem == null)) return;
+
+      PwEntry pe = null;
+      if (lvHit.SubItem != null && lvHit.SubItem.Tag is PwEntry)
+        pe = lvHit.SubItem.Tag as PwEntry;
+      if (pe == null)
+        pe = lvHit.Item.Tag as PwEntry;
+      if (pe == null) return;
+
+      PwEntryForm dlg = new PwEntryForm();
+      dlg.InitEx(pe, PwEditMode.EditExistingEntry, m_host.Database, m_host.MainWindow.ClientIcons,
+        false, false);
+      dlg.MultipleValuesEntryContext = null;
+
+      bool bOK = (dlg.ShowDialog() == DialogResult.OK);
+      var bMod = (bOK && dlg.HasModifiedEntry);
+      UIUtil.DestroyForm(dlg);
+
+      if (!bOK) return;
+
+      bool bUpdImg = m_host.Database.UINeedsIconUpdate; // Refreshing entries resets it
+      m_host.MainWindow.RefreshEntriesList(); // Last access time
+      m_host.MainWindow.UpdateUI(false, null, bUpdImg, null, false, null, bMod);
+
+			if(Program.Config.Application.AutoSaveAfterEntryEdit && bMod)
+				m_host.MainWindow.SaveDatabase(m_host.Database, null);
+}
 
     private string GetGroupName(PwGroup pg)
     {
@@ -208,6 +367,12 @@ namespace ReferenceCheck
 
       m_host.MainWindow.ToolsMenu.DropDownItems.Remove(m_tsmiConfig);
       m_tsmiConfig.Dispose();
+
+      if (m_tsmiFind.Owner != null)
+      {
+        m_tsmiFind.Owner.Items.Remove(m_tsmiFind);
+      }
+      m_tsmiFind.Dispose();
 
       PluginDebug.SaveOrShow();
       m_host = null;
