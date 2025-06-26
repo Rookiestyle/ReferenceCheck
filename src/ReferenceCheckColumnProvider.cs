@@ -22,9 +22,12 @@ namespace ReferenceCheck
       if (!Config.Active) return "?";
       var iReferenced = DB_Handler.GetReferencedEntries(pe).Count;
       var oReferencing = DB_Handler.GetReferencingEntries(pe);
-      var iReferecning = oReferencing == null ? 0 : oReferencing.References.Count;
-      if (iReferenced == 0 && iReferecning == 0) return string.Empty;
-      return iReferenced.ToString() + " / " + iReferecning.ToString();
+      var iReferencing = oReferencing == null ? 0 : oReferencing.References.Count;
+      if (iReferenced == 0 && iReferencing == 0) return string.Empty;
+      if (DB_Handler.HasBrokenReferences(pe))
+        return iReferenced.ToString() + "* / " + iReferencing.ToString();
+      else
+        return iReferenced.ToString() + " / " + iReferencing.ToString();
     }
 
     public override bool SupportsCellAction(string strColumnName)

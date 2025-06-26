@@ -38,6 +38,8 @@ namespace ReferenceCheck
 
     private static List<PwEntry> EmptyEntryList = new List<PwEntry>();
 
+    private static List<string> m_lEmptyList = new List<string>();
+
     static DB_Handler()
     {
       m_tTimer.Tick += CheckDeleted;
@@ -166,6 +168,20 @@ namespace ReferenceCheck
       if (m_dDB.ContainsKey(sDB)) return m_dDB[sDB];
       return null;
     }
+
+    internal static bool HasBrokenReferences(PwEntry pe)
+    {
+      string db = GetDB(pe);
+      if (string.IsNullOrEmpty(db)) return false;
+      return m_dDB[db].HasBrokenReferences(pe);
+    }
+
+    internal static List<string> GetBrokenReferences(PwEntry pe)
+    {
+      string db = GetDB(pe);
+      if (string.IsNullOrEmpty(db)) return m_lEmptyList;
+      return m_dDB[db].GetBrokenReferences(pe);
+    }
   }
 
   internal class DB_References
@@ -173,8 +189,10 @@ namespace ReferenceCheck
     internal EventHandler<DB_RestoreDeleted> RestoreDeleted;
 
     private List<EntryReferences> m_lReferences = new List<EntryReferences>();
+    private Dictionary<PwEntry, List<string>> m_dBrokenReferences = new Dictionary<PwEntry, List<string>>();
     private PwDatabase m_db = null;
     private string m_sDBPath = string.Empty;
+    private List<string> m_lEmptyList = new List<string>();
 
     private int m_iDelObjCount = 0;
 
@@ -200,7 +218,8 @@ namespace ReferenceCheck
     {
       if (pe == null) return;
       List<string> lRefs = GetReferenceStrings(pe);
-      List<PwEntry> lRefEntries = GetReferencedEntries(lRefs, pe);
+      List<string> lBrokenRefs = null;
+      List<PwEntry> lRefEntries = GetReferencedEntries(lRefs, pe, out lBrokenRefs);
       foreach (PwEntry peRef in lRefEntries)
       {
         EntryReferences er = m_lReferences.Find(x => x.Entry.Uuid.Equals(peRef.Uuid));
@@ -210,6 +229,14 @@ namespace ReferenceCheck
           m_lReferences.Add(er);
         }
         if (!er.References.Contains(pe)) er.References.Add(pe);
+      }
+
+      m_dBrokenReferences.Remove(pe);
+      foreach (string sBrokenRef in lBrokenRefs)
+      {
+        if (!m_dBrokenReferences.ContainsKey(pe))
+          m_dBrokenReferences[pe] = new List<string>();
+        m_dBrokenReferences[pe].Add(sBrokenRef);
       }
     }
 
@@ -304,16 +331,21 @@ namespace ReferenceCheck
       FillReferencesSingle(pe);
     }
 
-    private List<PwEntry> GetReferencedEntries(List<string> lRefs, PwEntry pe)
+    private List<PwEntry> GetReferencedEntries(List<string> lRefs, PwEntry pe, out List<string> lBrokenRefs)
     {
       List<PwEntry> lEntries = new List<PwEntry>();
+      lBrokenRefs = new List<string>();
       if (lRefs == null) return lEntries;
       foreach (string sRef in lRefs)
       {
         char cScan;
         char cWanted;
         PwEntry peRef = KeePass.Util.Spr.SprEngine.FindRefTarget(sRef, new KeePass.Util.Spr.SprContext(pe, m_db, KeePass.Util.Spr.SprCompileFlags.References), out cScan, out cWanted);
-        if (peRef == null) continue;
+        if (peRef == null)
+        {
+          if (!lBrokenRefs.Contains(sRef)) lBrokenRefs.Add(sRef);
+          continue;
+        }
         if (!lEntries.Contains(peRef)) lEntries.Add(peRef);
       }
       return lEntries;
@@ -376,6 +408,17 @@ namespace ReferenceCheck
     internal bool HasReferences(PwUuid uuid)
     {
       return m_lReferences.Exists(x => x.References.Exists(y => y.Uuid == uuid));
+    }
+
+    internal bool HasBrokenReferences(PwEntry pe)
+    {
+      return m_dBrokenReferences.ContainsKey(pe);
+    }
+
+    internal List<string> GetBrokenReferences(PwEntry pe)
+    {
+      if (!HasBrokenReferences(pe)) return m_lEmptyList;
+      return m_dBrokenReferences[pe];
     }
 
     internal List<PwEntry> GetReferencedEntries(PwUuid uuid)

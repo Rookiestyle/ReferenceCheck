@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Drawing;
 using System.Windows.Forms;
 using KeePass;
@@ -81,6 +82,9 @@ namespace ReferenceCheck
     private void ReferenceCheckExt_Opening(object sender, EventArgs e)
     {
       m_tsmiFind.Enabled = m_host.Database.IsOpen && Config.Active;
+      if (!m_tsmiFind.Enabled) return;
+      var dbR = DB_Handler.Get_References(m_host.Database);
+      m_tsmiFind.Enabled = dbR != null && dbR.AllReferences.Count > 0;
     }
 
     private void OnFindReferences(object sender, EventArgs e)
@@ -99,7 +103,7 @@ namespace ReferenceCheck
       foreach (var f in dbR.AllReferences)
       {
         var l = DB_Handler.GetReferencingEntries(f.Entry);
-        if (l.References.Count == 0)
+        if (l.References.Count == 0 && !DB_Handler.HasBrokenReferences(f.Entry))
           continue;
         if (!dReferencing.ContainsKey(l.Entry)) dReferencing[l.Entry] = new List<PwEntry>();
         dReferencing[l.Entry].AddRange(l.References);
@@ -137,6 +141,7 @@ namespace ReferenceCheck
       };
       fo.Icon = Resources.image_on;
       fo.StartPosition = FormStartPosition.CenterParent;
+      fo.ShowInTaskbar = false;
       UIUtil.ShowDialogAndDestroy(fo);
       return;
     }
@@ -154,6 +159,7 @@ namespace ReferenceCheck
         m_host.MainWindow.FileOpened -= DB_Handler.OnFileOpened;
         m_host.MainWindow.FileClosed -= DB_Handler.OnFileClosed;
         GlobalWindowManager.WindowAdded -= OnWindowAdded;
+        GlobalWindowManager.WindowRemoved -= OnWindowClosed;
         PwEntry.EntryTouched -= OnEntryTouched;
         DB_Handler.RestoreDeleted -= OnShouldRestoreDeleted;
         m_host.MainWindow.UpdateUI(false, null, false, null, true, null, false);
@@ -165,6 +171,7 @@ namespace ReferenceCheck
         m_host.MainWindow.FileOpened += DB_Handler.OnFileOpened;
         m_host.MainWindow.FileClosed += DB_Handler.OnFileClosed;
         GlobalWindowManager.WindowAdded += OnWindowAdded;
+        GlobalWindowManager.WindowRemoved += OnWindowClosed;
         PwEntry.EntryTouched += OnEntryTouched;
         DB_Handler.RestoreDeleted += OnShouldRestoreDeleted;
         m_tsmiConfig.Image = SmallIcon;
@@ -188,17 +195,26 @@ namespace ReferenceCheck
           e.Entries.Count)) == DialogResult.Yes;
     }
 
+    Dictionary<PwUuid, PwEntryForm> m_dPwEntryForms = new Dictionary<PwUuid, PwEntryForm>();
     private void OnWindowAdded(object sender, GwmWindowEventArgs e)
     {
       if (!Config.Active) return;
       PwEntryForm f = e.Form as PwEntryForm;
       if (f == null) return;
+      m_dPwEntryForms[f.EntryRef.Uuid] = f;
       PwDatabase db = m_host.MainWindow.DocumentManager.SafeFindContainerOf(f.EntryRef);
       bool bAddTab = Config.ShowReferencedEntries && DB_Handler.HasReferences(f.EntryRef);
       bAddTab |= Config.ShowReferencingEntries && DB_Handler.IsReferenced(f.EntryRef);
       if (!bAddTab) return;
 
       f.Shown += OnShowEntryForm;
+    }
+
+    private void OnWindowClosed(object sender, GwmWindowEventArgs e)
+    {
+      PwEntryForm f = e.Form as PwEntryForm;
+      if (f == null) return;
+      m_dPwEntryForms.Remove(f.EntryRef.Uuid);
     }
 
     private void OnShowEntryForm(object sender, EventArgs e)
@@ -219,30 +235,31 @@ namespace ReferenceCheck
       tc = new TabControl();
       tc.Dock = DockStyle.Fill;
       tp.Controls.Add(tc);
-      ListView lv = null;
       if (Config.ShowReferencedEntries)
       {
-        lv = AddReferencesTab(tc,
+        var lv = AddReferencesTab(tc,
                          PluginTranslate.Referencing,
-                         DB_Handler.GetReferencedEntries(f.EntryRef));
+                         DB_Handler.GetReferencedEntries(f.EntryRef), null, DB_Handler.GetBrokenReferences(f.EntryRef));
+        if (lv != null)
+          lv.AutoResizeColumn(0, ColumnHeaderAutoResizeStyle.ColumnContent);
       }
       if (Config.ShowReferencingEntries)
       {
-        lv = AddReferencesTab(tc,
+        var lv = AddReferencesTab(tc,
                          PluginTranslate.ReferencedBy,
                          DB_Handler.GetReferencingEntries(f.EntryRef).References);
+        if (lv != null)
+          lv.AutoResizeColumn(0, ColumnHeaderAutoResizeStyle.ColumnContent);
       }
       //AddReferencingTab(tc, f.EntryRef);
       //AddReferencesTab(tc, f.EntryRef);
-      if (lv != null) 
-        lv.AutoResizeColumn(0, ColumnHeaderAutoResizeStyle.ColumnContent);
 
       tp.ResumeLayout();
     }
 
-    private ListView AddReferencesTab(TabControl tc, string sTitle, List<PwEntry> lEntries, PwEntry pe = null)
+    private ListView AddReferencesTab(TabControl tc, string sTitle, List<PwEntry> lEntries, PwEntry pe = null, List<string> lBrokenRefs = null)
     {
-      if (lEntries.Count == 0) return null;
+      if (lEntries.Count == 0 && (lBrokenRefs == null || lBrokenRefs.Count == 0)) return null;
       TabPage tp = null;
       ListView lv = null;
       for (int i = 0; i < tc.TabPages.Count; i++)
@@ -286,6 +303,27 @@ namespace ReferenceCheck
           lvsi.Tag = pe;
           lviAdded.SubItems.Add(lvsi);
         }
+        if (DB_Handler.HasBrokenReferences(er))
+          lviAdded.SubItems[0].ForeColor = Color.Red;
+        lvi.UseItemStyleForSubItems = false;
+      }
+      if (lBrokenRefs != null)
+      {
+        foreach (var sBrokenRef in lBrokenRefs)
+        {
+          ListViewGroup g = lGroups.Find(x => x.Tag == lBrokenRefs);
+          if (g == null)
+          {
+            g = new ListViewGroup(string.Empty) { Tag = lBrokenRefs };
+            lGroups.Add(g);
+            lv.Groups.Add(g);
+          }
+          ListViewItem lvi = new ListViewItem();
+          lvi.Group = g;
+          lvi.Text = sBrokenRef;
+          var lviAdded = lv.Items.Add(lvi);
+          lviAdded.SubItems[0].ForeColor = Color.Red;
+        }
       }
       lv.View = View.Details;
       lv.ShowGroups = true;
@@ -295,11 +333,12 @@ namespace ReferenceCheck
       if (pe != null && lv.Columns.Count == 1)
       {
         if (sTitle == PluginTranslate.Referencing)
-          lv.Columns.Add(PluginTranslate.ReferencedBy);
-        else
           lv.Columns.Add(PluginTranslate.Referencing);
-        lv.MouseDoubleClick += Lv_MouseDoubleClick;
+        else
+          lv.Columns.Add(PluginTranslate.ReferencedBy);
       }
+      lv.MouseDoubleClick -= Lv_MouseDoubleClick;
+      lv.MouseDoubleClick += Lv_MouseDoubleClick;
       lv.Dock = DockStyle.Fill;
       return lv;
     }
@@ -317,24 +356,44 @@ namespace ReferenceCheck
         pe = lvHit.Item.Tag as PwEntry;
       if (pe == null) return;
 
-      PwEntryForm dlg = new PwEntryForm();
-      dlg.InitEx(pe, PwEditMode.EditExistingEntry, m_host.Database, m_host.MainWindow.ClientIcons,
-        false, false);
-      dlg.MultipleValuesEntryContext = null;
+      Action actOpenOtherEntry = new Action(() =>
+      {
+        PwEntryForm dlg = new PwEntryForm();
+        dlg.InitEx(pe, PwEditMode.EditExistingEntry, m_host.Database, m_host.MainWindow.ClientIcons,
+          false, false);
+        dlg.MultipleValuesEntryContext = null;
 
-      bool bOK = (dlg.ShowDialog() == DialogResult.OK);
-      var bMod = (bOK && dlg.HasModifiedEntry);
-      UIUtil.DestroyForm(dlg);
+        bool bOK = (dlg.ShowDialog(m_host.MainWindow) == DialogResult.OK);
+        var bMod = (bOK && dlg.HasModifiedEntry);
+        UIUtil.DestroyForm(dlg);
 
-      if (!bOK) return;
+        if (!bOK) return;
 
-      bool bUpdImg = m_host.Database.UINeedsIconUpdate; // Refreshing entries resets it
-      m_host.MainWindow.RefreshEntriesList(); // Last access time
-      m_host.MainWindow.UpdateUI(false, null, bUpdImg, null, false, null, bMod);
+        bool bUpdImg = m_host.Database.UINeedsIconUpdate; // Refreshing entries resets it
+        m_host.MainWindow.RefreshEntriesList(); // Last access time
+        m_host.MainWindow.UpdateUI(false, null, bUpdImg, null, false, null, bMod);
 
-			if(Program.Config.Application.AutoSaveAfterEntryEdit && bMod)
-				m_host.MainWindow.SaveDatabase(m_host.Database, null);
-}
+        if (Program.Config.Application.AutoSaveAfterEntryEdit && bMod)
+          m_host.MainWindow.SaveDatabase(m_host.Database, null);
+      });
+
+      PwEntryForm peOtherForm = null;
+      m_dPwEntryForms.TryGetValue(pe.Uuid, out peOtherForm);
+      if (peOtherForm == null)
+      {
+        actOpenOtherEntry(); 
+        return;
+      }
+      if (peOtherForm.Disposing || peOtherForm.IsDisposed)
+      {
+        m_dPwEntryForms.Remove(pe.Uuid);
+        actOpenOtherEntry();
+        return;
+      }
+
+      //The doubleclicked entry is already opened
+      //Do nothing...
+    }
 
     private string GetGroupName(PwGroup pg)
     {
