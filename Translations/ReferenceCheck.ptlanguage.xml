@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Translation>
-	1
-  <TranslationVersion>0</TranslationVersion>
+  <TranslationVersion>1</TranslationVersion>
   <item>
     <key>ReferencedBy</key>
     <value>Referenciado por</value>
