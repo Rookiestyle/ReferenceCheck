@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using KeePass;
 using KeePass.Forms;
@@ -84,7 +84,7 @@ namespace ReferenceCheck
       m_tsmiFind.Enabled = m_host.Database.IsOpen && Config.Active;
       if (!m_tsmiFind.Enabled) return;
       var dbR = DB_Handler.Get_References(m_host.Database);
-      m_tsmiFind.Enabled = dbR != null && dbR.AllReferences.Count > 0;
+      m_tsmiFind.Enabled = dbR != null && (dbR.AllReferences.Count > 0 || dbR.AllBrokenReferences.Count > 0);
     }
 
     private void OnFindReferences(object sender, EventArgs e)
@@ -92,8 +92,9 @@ namespace ReferenceCheck
       if (m_host.Database == null) return;
       if (!m_host.Database.IsOpen) return;
       var dbR = DB_Handler.Get_References(m_host.Database);
-      if (dbR ==  null) return;
-      if (dbR.AllReferences.Count == 0) return;
+      if (dbR == null) return;
+      if (dbR.AllReferences.Count == 0 && dbR.AllBrokenReferences.Count == 0) return;
+      var dBroken = new Dictionary<PwEntry, List<string>>(dbR.AllBrokenReferences);
 
       var tc = new TabControl();
 
@@ -111,22 +112,24 @@ namespace ReferenceCheck
         {
           if (!dReferences.ContainsKey(lR)) dReferences[lR] = new List<PwEntry>();
           if (!dReferences[lR].Contains(f.Entry)) dReferences[lR].Add(f.Entry);
+          dBroken.Remove(lR);
         }
       }
       ListView lv1 = null;
       ListView lv2 = null;
       foreach (var x in dReferencing)
         lv1 = AddReferencesTab(tc, PluginTranslate.Referencing, x.Value, x.Key);
+      lv1 = AddReferencesTab(tc, PluginTranslate.Referencing, dBroken.Keys.ToList(), null);
 
       foreach (var x in dReferences)
         lv2 = AddReferencesTab(tc, PluginTranslate.ReferencedBy, x.Value, x.Key);
-
+      if (lv1 == null && lv2 == null) return;
       var fo = new Form();
       fo.FormBorderStyle = FormBorderStyle.FixedDialog;
       fo.MaximizeBox = fo.MinimizeBox = false;
       fo.Width = m_host.MainWindow.Width / 2;
-      fo.Height = m_host.MainWindow.Height/ 2;
-      lv1.Scrollable = true;
+      fo.Height = m_host.MainWindow.Height / 2;
+
       tc.Dock = DockStyle.Fill;
       fo.Controls.Add(tc);
       var bCancel = new Button();
@@ -204,6 +207,7 @@ namespace ReferenceCheck
       m_dPwEntryForms[f.EntryRef.Uuid] = f;
       PwDatabase db = m_host.MainWindow.DocumentManager.SafeFindContainerOf(f.EntryRef);
       bool bAddTab = Config.ShowReferencedEntries && DB_Handler.HasReferences(f.EntryRef);
+      bAddTab |= Config.ShowReferencedEntries && DB_Handler.HasBrokenReferences(f.EntryRef);
       bAddTab |= Config.ShowReferencingEntries && DB_Handler.IsReferenced(f.EntryRef);
       if (!bAddTab) return;
 
@@ -259,7 +263,6 @@ namespace ReferenceCheck
 
     private ListView AddReferencesTab(TabControl tc, string sTitle, List<PwEntry> lEntries, PwEntry pe = null, List<string> lBrokenRefs = null)
     {
-      if (lEntries.Count == 0 && (lBrokenRefs == null || lBrokenRefs.Count == 0)) return null;
       TabPage tp = null;
       ListView lv = null;
       for (int i = 0; i < tc.TabPages.Count; i++)
@@ -271,6 +274,7 @@ namespace ReferenceCheck
           break;
         }
       }
+      if (lEntries.Count == 0 && (lBrokenRefs == null || lBrokenRefs.Count == 0)) return lv;
       if (tp == null)
       {
         tp = new TabPage(sTitle);
@@ -301,6 +305,8 @@ namespace ReferenceCheck
           var lvsi = new ListViewItem.ListViewSubItem();
           lvsi.Text = pe.Strings.ReadSafe(PwDefs.TitleField);
           lvsi.Tag = pe;
+          if (DB_Handler.HasBrokenReferences(pe))
+            lvsi.ForeColor = Color.Red;
           lviAdded.SubItems.Add(lvsi);
         }
         if (DB_Handler.HasBrokenReferences(er))
@@ -381,7 +387,7 @@ namespace ReferenceCheck
       m_dPwEntryForms.TryGetValue(pe.Uuid, out peOtherForm);
       if (peOtherForm == null)
       {
-        actOpenOtherEntry(); 
+        actOpenOtherEntry();
         return;
       }
       if (peOtherForm.Disposing || peOtherForm.IsDisposed)

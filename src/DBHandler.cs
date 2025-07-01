@@ -173,6 +173,7 @@ namespace ReferenceCheck
     {
       string db = GetDB(pe);
       if (string.IsNullOrEmpty(db)) return false;
+      if (!m_dDB.ContainsKey(db)) return false;
       return m_dDB[db].HasBrokenReferences(pe);
     }
 
@@ -197,6 +198,8 @@ namespace ReferenceCheck
     private int m_iDelObjCount = 0;
 
     public List<EntryReferences>  AllReferences { get { return m_lReferences; } }
+
+    public Dictionary<PwEntry, List<string>> AllBrokenReferences { get { return m_dBrokenReferences; } }
 
     public static readonly EntryReferences NoReferences = new EntryReferences(null);
     internal DB_References(PwDatabase db)
@@ -321,12 +324,15 @@ namespace ReferenceCheck
 
     internal void UpdateReferences(PwEntry pe)
     {
-      foreach (EntryReferences er in m_lReferences)
+      for (int i = m_lReferences.Count -1; i >= 0; i--)
       {
-        for (int i = er.References.Count - 1; i >= 0; i--)
+        EntryReferences er = m_lReferences[i];
+        for (int j = er.References.Count - 1; j >= 0; j--)
         {
-          if (er.References[i].Uuid == pe.Uuid) er.References.RemoveAt(i);
+          if (er.References[j].Uuid != pe.Uuid) continue;
+          er.References.RemoveAt(j);
         }
+        if (er.References.Count == 0) m_lReferences.RemoveAt(i);
       }
       FillReferencesSingle(pe);
     }
@@ -402,7 +408,15 @@ namespace ReferenceCheck
 
     internal bool IsReferenced(PwUuid uuid)
     {
-      return m_lReferences.Exists(x => (x.Entry.Uuid == uuid) && (x.References.Count > 0));
+      var r = m_lReferences.FirstOrDefault(x => x.Entry.Uuid == uuid);
+      if (r == null) return false;
+      if (r.References.Count == 0)
+      {
+        m_lReferences.Remove(r);
+        return false;
+      }
+      return true;
+      //return m_lReferences.Exists(x => (x.Entry.Uuid == uuid) && (x.References.Count > 0));
     }
 
     internal bool HasReferences(PwUuid uuid)

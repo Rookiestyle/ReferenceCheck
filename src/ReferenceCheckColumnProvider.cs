@@ -23,8 +23,9 @@ namespace ReferenceCheck
       var iReferenced = DB_Handler.GetReferencedEntries(pe).Count;
       var oReferencing = DB_Handler.GetReferencingEntries(pe);
       var iReferencing = oReferencing == null ? 0 : oReferencing.References.Count;
-      if (iReferenced == 0 && iReferencing == 0) return string.Empty;
-      if (DB_Handler.HasBrokenReferences(pe))
+      var bHasBrokenReferences = DB_Handler.HasBrokenReferences(pe);
+      if (iReferenced == 0 && iReferencing == 0 && !bHasBrokenReferences) return string.Empty;
+      if (bHasBrokenReferences)
         return iReferenced.ToString() + "* / " + iReferencing.ToString();
       else
         return iReferenced.ToString() + " / " + iReferencing.ToString();
