@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 using KeePass;
@@ -346,7 +347,12 @@ namespace ReferenceCheck
       {
         char cScan;
         char cWanted;
-        PwEntry peRef = KeePass.Util.Spr.SprEngine.FindRefTarget(sRef, new KeePass.Util.Spr.SprContext(pe, m_db, KeePass.Util.Spr.SprCompileFlags.References), out cScan, out cWanted);
+        //string s = KeePass.Util.Spr.SprEngine.FillRefPlaceholdersPub(sRef,
+        //    new KeePass.Util.Spr.SprContext(pe, m_db, KeePass.Util.Spr.SprCompileFlags.All), 1);
+        var scfFlags = KeePass.Util.Spr.SprCompileFlags.NonActive;
+        scfFlags ^= KeePass.Util.Spr.SprCompileFlags.References;
+        var sRefToUse = KeePass.Util.Spr.SprEngine.Compile(sRef, new KeePass.Util.Spr.SprContext(pe, m_db, scfFlags));
+        PwEntry peRef = KeePass.Util.Spr.SprEngine.FindRefTarget(sRefToUse, new KeePass.Util.Spr.SprContext(pe, m_db, KeePass.Util.Spr.SprCompileFlags.All), out cScan, out cWanted);
         if (peRef == null)
         {
           if (!lBrokenRefs.Contains(sRef)) lBrokenRefs.Add(sRef);
@@ -362,6 +368,7 @@ namespace ReferenceCheck
       //Use array of char to not break the ProtectedString
       char[] aRefStart = @"{REF:".ToCharArray();
       char cRefEnd = '}';
+      int iOpeningBrackets = 0;
       List<string> lResult = new List<string>();
       foreach (var ps in pe.Strings)
       {
@@ -384,10 +391,15 @@ namespace ReferenceCheck
               for (int j = i; j < cString.Length; j++)
               {
                 sRef += cString[j];
+                if (cString[j] == '{') iOpeningBrackets++; 
                 if (cString[j] == cRefEnd)
                 {
-                  iEnd = j;
-                  break;
+                  iOpeningBrackets--;
+                  if (iOpeningBrackets == 0)
+                  {
+                    iEnd = j;
+                    break;
+                  }
                 }
               }
               if (iEnd > -1) lResult.Add(sRef);
