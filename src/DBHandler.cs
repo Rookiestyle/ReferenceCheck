@@ -235,7 +235,21 @@ namespace ReferenceCheck
         if (!er.References.Contains(pe)) er.References.Add(pe);
       }
 
-      m_dBrokenReferences.Remove(pe);
+      var bRemoved = m_dBrokenReferences.Remove(pe);
+
+      var dBroken = new Dictionary<PwEntry, List<string>>();
+      foreach (var kvp in m_dBrokenReferences)
+      {
+        if (kvp.Key.Uuid.Equals(pe.Uuid))
+        {
+          PluginDebug.AddInfo("Entry should have been removed already: " + pe.Uuid.ToHexString());
+          continue;
+        }
+        dBroken[kvp.Key] = kvp.Value;
+      }
+      m_dBrokenReferences = dBroken;
+
+
       foreach (string sBrokenRef in lBrokenRefs)
       {
         if (!m_dBrokenReferences.ContainsKey(pe))
