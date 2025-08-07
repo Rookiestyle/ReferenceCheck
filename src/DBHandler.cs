@@ -29,6 +29,12 @@ namespace ReferenceCheck
     }
   }
 
+  internal class BrokenReference
+  {
+    internal PwEntry Entry;
+    internal List<string> BrokenReferences;
+  }
+
   internal static class DB_Handler
   {
     private static Timer m_tTimer = new Timer();
@@ -191,7 +197,7 @@ namespace ReferenceCheck
     internal EventHandler<DB_RestoreDeleted> RestoreDeleted;
 
     private List<EntryReferences> m_lReferences = new List<EntryReferences>();
-    private Dictionary<PwEntry, List<string>> m_dBrokenReferences = new Dictionary<PwEntry, List<string>>();
+    private Dictionary<PwUuid, BrokenReference> m_dBrokenReferences = new Dictionary<PwUuid, BrokenReference>();
     private PwDatabase m_db = null;
     private string m_sDBPath = string.Empty;
     private List<string> m_lEmptyList = new List<string>();
@@ -200,7 +206,13 @@ namespace ReferenceCheck
 
     public List<EntryReferences>  AllReferences { get { return m_lReferences; } }
 
-    public Dictionary<PwEntry, List<string>> AllBrokenReferences { get { return m_dBrokenReferences; } }
+    public Dictionary<PwEntry, List<string>> AllBrokenReferences 
+    { 
+      get 
+      {
+        return m_dBrokenReferences.ToDictionary(x=>x.Value.Entry, x=>x.Value.BrokenReferences);
+      } 
+    }
 
     public static readonly EntryReferences NoReferences = new EntryReferences(null);
     internal DB_References(PwDatabase db)
@@ -235,27 +247,11 @@ namespace ReferenceCheck
         if (!er.References.Contains(pe)) er.References.Add(pe);
       }
 
-      var bRemoved = m_dBrokenReferences.Remove(pe);
+      //m_dBrokenReferences = m_dBrokenReferences.Where(x => x.Key.Uuid != pe.Uuid).ToDictionary(x => x.Key, x => x.Value);
+      m_dBrokenReferences.Remove(pe.Uuid);
 
-      var dBroken = new Dictionary<PwEntry, List<string>>();
-      foreach (var kvp in m_dBrokenReferences)
-      {
-        if (kvp.Key.Uuid.Equals(pe.Uuid))
-        {
-          PluginDebug.AddInfo("Entry should have been removed already: " + pe.Uuid.ToHexString());
-          continue;
-        }
-        dBroken[kvp.Key] = kvp.Value;
-      }
-      m_dBrokenReferences = dBroken;
-
-
-      foreach (string sBrokenRef in lBrokenRefs)
-      {
-        if (!m_dBrokenReferences.ContainsKey(pe))
-          m_dBrokenReferences[pe] = new List<string>();
-        m_dBrokenReferences[pe].Add(sBrokenRef);
-      }
+      if (lBrokenRefs.Count > 0)
+        m_dBrokenReferences[pe.Uuid] = new BrokenReference() { Entry = pe, BrokenReferences = lBrokenRefs };
     }
 
     internal void CheckDeleted()
@@ -452,13 +448,14 @@ namespace ReferenceCheck
 
     internal bool HasBrokenReferences(PwEntry pe)
     {
-      return m_dBrokenReferences.ContainsKey(pe);
+      //return m_dBrokenReferences.Count(x => x.Key.Uuid.Equals(pe.Uuid)) > 0;
+      return m_dBrokenReferences.ContainsKey(pe.Uuid);
     }
 
     internal List<string> GetBrokenReferences(PwEntry pe)
     {
       if (!HasBrokenReferences(pe)) return m_lEmptyList;
-      return m_dBrokenReferences[pe];
+      return m_dBrokenReferences[pe.Uuid].BrokenReferences;
     }
 
     internal List<PwEntry> GetReferencedEntries(PwUuid uuid)
