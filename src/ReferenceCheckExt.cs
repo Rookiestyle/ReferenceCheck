@@ -161,6 +161,7 @@ namespace ReferenceCheck
       {
         m_host.MainWindow.FileOpened -= DB_Handler.OnFileOpened;
         m_host.MainWindow.FileClosed -= DB_Handler.OnFileClosed;
+        m_host.MainWindow.FileSaved -= DB_Handler.OnFileSaved;
         GlobalWindowManager.WindowAdded -= OnWindowAdded;
         GlobalWindowManager.WindowRemoved -= OnWindowClosed;
         PwEntry.EntryTouched -= OnEntryTouched;
@@ -173,6 +174,7 @@ namespace ReferenceCheck
       {
         m_host.MainWindow.FileOpened += DB_Handler.OnFileOpened;
         m_host.MainWindow.FileClosed += DB_Handler.OnFileClosed;
+        m_host.MainWindow.FileSaved += DB_Handler.OnFileSaved;
         GlobalWindowManager.WindowAdded += OnWindowAdded;
         GlobalWindowManager.WindowRemoved += OnWindowClosed;
         PwEntry.EntryTouched += OnEntryTouched;

@@ -10,6 +10,7 @@ using KeePass.Plugins;
 using KeePass.UI;
 using KeePassLib;
 using KeePassLib.Collections;
+using KeePassLib.Serialization;
 using KeePassLib.Utility;
 using PluginTools;
 using PluginTranslation;
@@ -57,23 +58,39 @@ namespace ReferenceCheck
     internal static void OnFileOpened(object sender, FileOpenedEventArgs e)
     {
       if (!Config.Active) return;
-      DB_References db = new DB_References(e.Database);
-      db.RestoreDeleted += RestoreDeleted;
-      m_dDB[e.Database.IOConnectionInfo.Path] = db;
-      db.FillReferences();
-      if (Program.MainForm.ActiveDatabase != e.Database) return;
+      AddDatabaseInternal(e.Database);
+    }
+
+    private static void AddDatabaseInternal(PwDatabase db)
+    {
+      DB_References dbr = new DB_References(db);
+      dbr.RestoreDeleted += RestoreDeleted;
+      m_dDB[db.IOConnectionInfo.Path] = dbr;
+      dbr.FillReferences();
+      if (Program.MainForm.ActiveDatabase != db) return;
       Program.MainForm.UpdateUI(false, null, false, null, true, null, false);
+    }
+
+    internal static void OnFileSaved(object sender, FileSavedEventArgs e)
+    {
+      RemoveDatabaseInternal(e.Database.IOConnectionInfo);
+      AddDatabaseInternal(e.Database);
+    }
+
+    private static void RemoveDatabaseInternal(IOConnectionInfo ioc)
+    {
+      if (m_dDB.ContainsKey(ioc.Path) && (m_dDB[ioc.Path] != null))
+      {
+        m_dDB[ioc.Path].RestoreDeleted -= RestoreDeleted;
+      }
+      m_dDB[ioc.Path] = null;
+      m_dDB.Remove(ioc.Path);
     }
 
     internal static void OnFileClosed(object sender, FileClosedEventArgs e)
     {
       if (e.IOConnectionInfo == null || e.IOConnectionInfo.Path == null) return;
-      if (m_dDB.ContainsKey(e.IOConnectionInfo.Path) && (m_dDB[e.IOConnectionInfo.Path] != null))
-      {
-        m_dDB[e.IOConnectionInfo.Path].RestoreDeleted -= RestoreDeleted;
-      }
-      m_dDB[e.IOConnectionInfo.Path] = null;
-      m_dDB.Remove(e.IOConnectionInfo.Path);
+      RemoveDatabaseInternal(e.IOConnectionInfo);
     }
 
     internal static DB_References GetDBFromEntry(PwEntry pe)
